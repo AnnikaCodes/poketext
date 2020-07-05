@@ -10,11 +10,11 @@ class PSInterface():
     Args:
         connection (psclient.PSConnection): the connection
     """
-    def __init__(self, connection: psclient.PSConnection):
+    def __init__(self: PSInterface, connection: psclient.PSConnection) -> None:
         self.connection: psclient.PSConnection = connection
         self.roomContext: str = '' # is an ID
 
-    def switchRoomContext(self, room: str):
+    def switchRoomContext(self: PSInterface, room: str) -> None:
         """Changes the room context
 
         Args:
@@ -24,7 +24,7 @@ class PSInterface():
             self.connection.roomList.add(psclient.Room(room, self.connection))
         self.roomContext = psclient.toID(room)
 
-    def send(self, message: str):
+    def send(self: PSInterface, message: str) -> None:
         """Sends a message to the current room context
 
         Args:
@@ -56,7 +56,7 @@ def onOpenThread(*args: psclient.PSConnection) -> None:
     """Gets run when the thread is opened
     """
     if not args: return
-    conn = args[0]
+    conn: psclient.PSConnection = args[0]
     while True:
         if conn.isLoggedIn:
             conn.roomList.add(psclient.Room("help", conn))
@@ -64,12 +64,12 @@ def onOpenThread(*args: psclient.PSConnection) -> None:
             return print("Logged in!")
 
 if __name__ == '__main__':
-    showdownConnection = psclient.PSConnection(
+    showdownConnection: psclient.PSConnection = psclient.PSConnection(
         prefs.getPref("username"),
         prefs.getPref("password"),
         onParsedMessage=onMessage,
         onOpenThread=onOpenThread
     )
-    client = psclient.PSClient(showdownConnection)
-    interface = PSInterface(showdownConnection)
+    client: psclient.PSClient = psclient.PSClient(showdownConnection)
+    interface: PSInterface = PSInterface(showdownConnection)
     client.connect()
