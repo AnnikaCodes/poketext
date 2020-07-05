@@ -10,11 +10,11 @@ class PSInterface():
     Args:
         connection (psclient.PSConnection): the connection
     """
-    def __init__(self: PSInterface, connection: psclient.PSConnection) -> None:
+    def __init__(self, connection: psclient.PSConnection) -> None:
         self.connection: psclient.PSConnection = connection
         self.roomContext: str = '' # is an ID
 
-    def switchRoomContext(self: PSInterface, room: str) -> None:
+    def switchRoomContext(self, room: str) -> None:
         """Changes the room context
 
         Args:
@@ -24,7 +24,7 @@ class PSInterface():
             self.connection.roomList.add(psclient.Room(room, self.connection))
         self.roomContext = psclient.toID(room)
 
-    def send(self: PSInterface, message: str) -> None:
+    def send(self, message: str) -> None:
         """Sends a message to the current room context
 
         Args:
