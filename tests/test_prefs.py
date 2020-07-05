@@ -5,7 +5,7 @@ import pathlib
 sys.path.append('./')
 import prefs # pylint: disable=wrong-import-position
 
-def testPrefs():
+def testPrefs() -> None:
     """Tests preferences
     """
     prefs.PREFS_PATH = pathlib.Path('prefs.json').resolve()
