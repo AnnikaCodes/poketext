@@ -1,3 +1,4 @@
 # For testing
 pytest >= 5.4.3
 pylint >= 2.5.2
+mypy >= 0.770
