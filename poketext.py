@@ -1,11 +1,11 @@
 """A text-based client for Pokémon Showdown"""
 
 from datetime import datetime
-from typing import Union
+from typing import Union, Dict, Any
 import threading
 import queue
 import psclient # type: ignore
-from prompt_toolkit import HTML # type: ignore
+from prompt_toolkit import HTML, PromptSession
 
 import prefs
 
@@ -32,9 +32,11 @@ class PSInterface():
     def __init__(self, connection: psclient.PSConnection) -> None:
         self.connection: psclient.PSConnection = connection
         self.roomContext: str = '' # is an ID
-        self.prompt: str = "{room}> "
+        self.promptString: str = prefs.getPref("prompt") or "{room}> "
+        self.prompt: PromptSession = PromptSession(self.getPrompt())
         self.commandChar: str = prefs.getPref("commandchar")
-        self.commands = {"room": self.switchRoomContext, "eval": self.eval}
+        self.commands: Dict[str, Any] = {"room": self.switchRoomContext, "eval": self.eval}
+        self.isBusy: bool = False
 
     def send(self, message: str) -> None:
         """Sends a message to the current room context
@@ -43,16 +45,6 @@ class PSInterface():
             message (str): the message to send
         """
         self.connection.send(f"{self.roomContext}|{message}")
-
-    def getPrompt(self) -> str:
-        """Gets the prompt for sending messages
-
-        Returns:
-            str: the prompt
-        """
-        return self.prompt.format(
-            room=self.roomContext
-        )
 
     def handleMessage(self, message: psclient.Message) -> None:
         """Handles incoming messages from the server
@@ -82,6 +74,7 @@ class PSInterface():
         if not self.connection.getRoom(room):
             self.connection.roomList.add(psclient.Room(room, self.connection))
         self.roomContext = psclient.toID(room)
+        self.prompt.message = self.getPrompt()
 
     def eval(self, code: str) -> None:
         """Evaluates code and prints the result
@@ -90,6 +83,17 @@ class PSInterface():
             code (str): the code
         """
         print(eval(code)) # pylint: disable=eval-used
+
+    def getPrompt(self) -> str:
+        """Gets the prompt for sending messages
+
+        Returns:
+            str: the prompt
+        """
+        return self.promptString.format(
+            room=self.roomContext
+        )
+
 
 def messageListener(connection: psclient.PSConnection, message: psclient.Message) -> None:
     """Listens for incoming messages and puts them in the queue
@@ -105,7 +109,9 @@ def inputListener() -> None:
     """Listens for keyboard input
     """
     while True:
-        inputQueue.put(input(interface.getPrompt()))
+        if not interface.isBusy:
+            x = interface.prompt.prompt()
+            inputQueue.put(x)
 
 def mainLoop(*args: psclient.PSConnection) -> None:
     """Gets run when we connect to PS!
@@ -127,7 +133,9 @@ def mainLoop(*args: psclient.PSConnection) -> None:
         if command[:len(interface.commandChar)] == interface.commandChar:
             split = command[len(interface.commandChar):].split(' ', 1)
             if split[0] in interface.commands.keys():
+                interface.isBusy = True
                 interface.commands[split[0]](split[1] if len(split) > 1 else '')
+                interface.isBusy = False
                 continue
             print(f"Unknown command {command}")
             continue
