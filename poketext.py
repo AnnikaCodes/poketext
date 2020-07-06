@@ -5,11 +5,23 @@ from typing import Union
 import threading
 import queue
 import psclient # type: ignore
+from prompt_toolkit import HTML # type: ignore
 
 import prefs
 
 messageQueue: queue.Queue = queue.Queue()
 inputQueue: queue.Queue = queue.Queue()
+
+def formatHTML(rawHTML: str) -> HTML:
+    """Formats HTML recieved from PS! to a prompt_toolkit HTML object
+
+    Args:
+        rawHTML (str): the raw HTML
+
+    Returns:
+        HTML: the formatted object
+    """
+    return HTML(rawHTML.replace("<br />", '\n'))
 
 class PSInterface():
     """Provides a text-based interface to PS!
