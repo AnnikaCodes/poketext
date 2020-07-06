@@ -2,10 +2,14 @@
 
 from datetime import datetime
 from typing import Union, Dict, Any
+
+import html
 import threading
+import re
 import queue
+
 import psclient # type: ignore
-from prompt_toolkit import HTML, PromptSession
+from prompt_toolkit import HTML, PromptSession, print_formatted_text as printf
 
 import prefs
 
@@ -21,7 +25,16 @@ def formatHTML(rawHTML: str) -> HTML:
     Returns:
         HTML: the formatted object
     """
-    return HTML(rawHTML.replace("<br />", '\n'))
+    replacements: Dict[str, str] = {
+        r"<psicon[^>]*\/>": '', # <psicon> makes no sense outside of the main client
+        r"\|(raw|html|uhtml)\|": '\n',
+        #r"<br[^>]*\/>": '\n', # the HTML printer doesnt understand <br />
+        r"<(img|font)[^>]*>|</(font|img)>": "", # <img>, <font> dont work
+        r"&(nbsp|ThickSpace);": " "
+    }
+    for regex, substitution in replacements.items():
+        rawHTML = re.sub(regex, substitution, rawHTML)
+    return HTML(rawHTML)
 
 class PSInterface():
     """Provides a text-based interface to PS!
@@ -53,7 +66,7 @@ class PSInterface():
             message (psclient.Message): the Message object to handle
         """
         if message.type in prefs.getPref('blacklistedTypes'): return
-        formatted: str = message.raw
+        formatted: Union[str, HTML] = message.raw
         if message.type == 'chat' and message.senderName and message.body and message.room:
             time: str = f"[{str(datetime.utcfromtimestamp(int(message.time)).time())}] " if message.time else ""
             formatted = f"({message.room.id}) {time}{message.senderName.strip()}: {message.body}"
@@ -63,7 +76,11 @@ class PSInterface():
         if message.type in ['join', 'leave'] and message.room and message.senderName:
             if prefs.getPref("showjoins"):
                 formatted = f"{message.senderName.strip()} {'joined' if message.type == 'join' else 'left'} {message.room.id}"
-        print(formatted)
+        if message.type in ['raw', 'html', 'uhtml'] and message.raw:
+            index = 3 if message.type == 'uhtml' else 2
+            split = message.raw.split('|', index)
+            formatted = formatHTML(f"{(split[index - 1] + ': ') if message.type == 'uhtml' else ''}{split[index]}")
+        printf(formatted)
 
     def switchRoomContext(self, room: str) -> None:
         """Changes the room context
@@ -82,7 +99,10 @@ class PSInterface():
         Args:
             code (str): the code
         """
-        print(eval(code)) # pylint: disable=eval-used
+        try:
+            printf(eval(code)) # pylint: disable=eval-used
+        except Exception as err:
+            printf(HTML(f"<ansired>Error: {html.escape(str(err))}</ansired>"))
 
     def getPrompt(self) -> str:
         """Gets the prompt for sending messages
@@ -121,6 +141,14 @@ def mainLoop(*args: psclient.PSConnection) -> None:
     conn: psclient.PSConnection = args[0]
     hasAutojoined: bool = False
     while True:
+        if conn.isLoggedIn and not hasAutojoined:
+            autojoins = prefs.getPref("autojoin")
+            if autojoins:
+                for room in autojoins:
+                    conn.roomList.add(psclient.Room(room, conn))
+            hasAutojoined = True
+            printf("Logged in!")
+
         command: Union[str, None] = None
         try:
             interface.handleMessage(messageQueue.get(block=False))
@@ -136,18 +164,10 @@ def mainLoop(*args: psclient.PSConnection) -> None:
             if split[0] in interface.commands.keys():
                 interface.commands[split[0]](split[1] if len(split) > 1 else '')
                 continue
-            print(f"Unknown command {command}")
+            printf(f"Unknown command '{interface.commandChar}{split[0]}'")
             continue
         interface.send(command)
         interface.isBusy = False
-
-        if conn.isLoggedIn and not hasAutojoined:
-            autojoins = prefs.getPref("autojoin")
-            if autojoins:
-                for room in autojoins:
-                    conn.roomList.add(psclient.Room(room, conn))
-            hasAutojoined = True
-            print("Logged in!")
 
 if __name__ == '__main__':
     showdownConnection: psclient.PSConnection = psclient.PSConnection(
