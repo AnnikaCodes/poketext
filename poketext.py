@@ -112,6 +112,7 @@ def inputListener() -> None:
         if not interface.isBusy:
             x = interface.prompt.prompt()
             inputQueue.put(x)
+            interface.isBusy = True
 
 def mainLoop(*args: psclient.PSConnection) -> None:
     """Gets run when we connect to PS!
@@ -128,18 +129,17 @@ def mainLoop(*args: psclient.PSConnection) -> None:
         try:
             command = inputQueue.get(block=False)
         except queue.Empty:
-            pass
+            interface.isBusy = False
         if not command: continue
         if command[:len(interface.commandChar)] == interface.commandChar:
             split = command[len(interface.commandChar):].split(' ', 1)
             if split[0] in interface.commands.keys():
-                interface.isBusy = True
                 interface.commands[split[0]](split[1] if len(split) > 1 else '')
-                interface.isBusy = False
                 continue
             print(f"Unknown command {command}")
             continue
         interface.send(command)
+        interface.isBusy = False
 
         if conn.isLoggedIn and not hasAutojoined:
             autojoins = prefs.getPref("autojoin")
