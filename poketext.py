@@ -256,7 +256,11 @@ def inputListener() -> None:
     """
     while True:
         if not interface.isBusy:
-            x = interface.prompt.prompt()
+            try:
+                x = interface.prompt.prompt()
+            except KeyboardInterrupt:
+                printf(f"Use {interface.commandChar}exit to exit.")
+                continue
             inputQueue.put(x)
             interface.isBusy = True
 
