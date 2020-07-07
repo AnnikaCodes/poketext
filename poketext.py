@@ -14,6 +14,7 @@ import pathlib
 
 import psclient # type: ignore
 from prompt_toolkit import HTML, PromptSession, print_formatted_text as printf # type: ignore
+from prompt_toolkit.shortcuts import input_dialog as inputDialog, yes_no_dialog as yesNoDialog # type: ignore
 
 import prefs
 
@@ -65,7 +66,8 @@ class PSInterface():
         self.commandChar: str = prefs.getPref("commandchar")
         self.commands: Dict[str, Any] = {
             "room": self.switchRoomContext, "eval": self.eval, "loadplugin": self.loadPlugin, "load": self.loadPlugin,
-            "unload": self.unloadPlugin, "unloadplugin": self.unloadPlugin, "exit": self.exit, "bye": self.exit
+            "unload": self.unloadPlugin, "unloadplugin": self.unloadPlugin, "exit": self.exit, "bye": self.exit,
+            "configure": self.configure
         }
         self.loadedPlugins: set = set()
 
@@ -93,7 +95,7 @@ class PSInterface():
             room=self.roomContext
         )
 
-    def handleMessage(self, message: psclient.Message) -> None:
+    def handleMessage(self, message: psclient.Message):
         """Handles incoming messages from the server
 
         Args:
@@ -103,7 +105,13 @@ class PSInterface():
         formatted: Union[str, HTML] = message.raw
         if message.type == 'chat' and message.senderName and message.body and message.room:
             time: str = f"[{str(datetime.utcfromtimestamp(int(message.time)).time())}] " if message.time else ""
-            formatted = f"({message.room.id}) {time}{message.senderName.strip()}: {message.body}"
+            toPrint = [f"({message.room.id}) {time}{message.senderName.strip()}: {message.body}"]
+            if '|raw|' in message.body:
+                split = message.body.split('|raw|')
+                toPrint[0] = toPrint[0].replace(message.body, split[0])
+                for item in split[1:]:
+                    toPrint.append(formatHTML(item))
+            return [printf(item) for item in toPrint]
         if message.type == 'pm' and message.senderName:
             if message.sender and message.sender.id != message.connection.this.id:
                 formatted = f"(PM from {message.senderName.strip()}) {message.body}"
@@ -201,6 +209,38 @@ class PSInterface():
             prefs.setPref("plugins", pluginSettings)
         return printf(f"Plugin {plugin} unloaded!")
 
+    def configure(self, isAdvanced: str) -> None:
+        """Configures preferences
+
+        Args:
+            isAdvanced (str): 'advanced' means we show advanced settings
+        """
+        # pylint: disable=unused-argument
+        preferences: dict = {
+            "username": "Your Pokémon Showdown username",
+            "password": "Your Pokémon Showdown password",
+            "autojoins": "The rooms you want to automatically join upon logging in"
+        }
+        advancedPreferences: dict = {
+            "commandchar": "The character to use before commands ('%' is recommended)",
+            "prompt": "The prompt to use. If you don't know what you're doing, it's best to set this to '{room}> '"
+        }
+
+        loopDict = preferences if isAdvanced != 'advanced' else dict(preferences, **advancedPreferences)
+        for pref in loopDict:
+            isPassword: bool = pref == "password"
+            currentValue: str = "******" if prefs.getPref(pref) and isPassword else str(prefs.getPref(pref))
+            value: Any = inputDialog(
+                title=f"Configure {pref}",
+                text=f"{loopDict[pref]} (currently: {currentValue})",
+                password=isPassword
+            ).run()
+            if not value: continue
+            if pref == "autojoins": value = [psclient.toID(room) for room in value.split(',')]
+            prefs.setPref(pref, value)
+
+        prefs.setPref("showjoins", yesNoDialog(title="Configure showjoins", text="Display join/leave messages?").run())
+
 def messageListener(connection: psclient.PSConnection, message: psclient.Message) -> None:
     """Listens for incoming messages and puts them in the queue
 
@@ -228,7 +268,7 @@ def mainLoop(*args: psclient.PSConnection) -> None:
     hasAutojoined: bool = False
     while True:
         if conn.isLoggedIn and not hasAutojoined:
-            autojoins = prefs.getPref("autojoin")
+            autojoins = prefs.getPref("autojoins")
             if autojoins:
                 for room in autojoins:
                     conn.roomList.add(psclient.Room(room, conn))
@@ -264,6 +304,9 @@ if __name__ == '__main__':
     )
     client: psclient.PSClient = psclient.PSClient(showdownConnection)
     interface: PSInterface = PSInterface(showdownConnection)
+    if len(sys.argv) > 1 and sys.argv[1] in ['--config', '--configure']:
+        interface.configure("advanced" if len(sys.argv) > 2 and sys.argv[2] == '--advanced' else "")
+        sys.exit()
     inputThread = threading.Thread(target=inputListener)
     inputThread.start()
     client.connect()
